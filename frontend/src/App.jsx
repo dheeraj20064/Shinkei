@@ -135,8 +135,7 @@ function App() {
   const [flow, setFlow]       = useState(null);
   const [loading, setLoading] = useState(false);
 
-  // 1. Make the function async
- const handleAnalyze = async (url, fnText) => {
+  const handleAnalyze = (url, fnText, forcedKey) => {
     setFlow(null);
     setLoading(true);
     const key = forcedKey || resolveFlowKey(url, fnText);
@@ -172,8 +171,6 @@ function App() {
         </main>
       </div>
 
-      {/* FlowViewer always sits inside the normal centered column.
-          FlowGraph breaks out to 100vw on its own via CSS — App never widens. */}
       {(flow || loading) && (
         <div style={{
           maxWidth: '720px',

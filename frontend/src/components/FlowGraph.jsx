@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import CodePanel from './CodePanel';
 
 const TYPE = {
@@ -8,16 +8,15 @@ const TYPE = {
   response: { label: 'Response', accent: '#378ADD', bg: 'rgba(55,138,221,0.07)',  border: 'rgba(55,138,221,0.35)',  text: '#B5D4F4' },
 };
 
-const NW   = 200;
-const NH   = 64;
-const HGAP = 36;
-const VGAP = 68;
-const PAD  = 48;
-
-// ms per level reveal
+const NW         = 200;
+const NH         = 64;
+const HGAP       = 36;
+const VGAP       = 68;
+const PAD        = 48;
 const LEVEL_DELAY = 650;
 
-function buildTreeLayout(nodes, edges, rootId) {
+// ── Build forward graph (root → children) ──────────────────────────────────
+function buildForwardLayout(nodes, edges, rootId) {
   const childMap = {};
   nodes.forEach(n => (childMap[n.id] = []));
   edges.forEach(e => {
@@ -36,7 +35,39 @@ function buildTreeLayout(nodes, edges, rootId) {
       }
     });
   }
+  return calcLayout(nodes, levels);
+}
 
+// ── Build backward graph ──────────────────────────────────────────────────
+// Root sits at BOTTOM. Functions it calls grow UPWARD.
+// Same BFS as forward but Y positions are flipped.
+function buildBackwardLayout(nodes, edges, rootId) {
+  const childMap = {};
+  nodes.forEach(n => (childMap[n.id] = []));
+  edges.forEach(e => {
+    if (childMap[e.from] !== undefined) childMap[e.from].push(e.to);
+  });
+
+  const levels = {};
+  const queue  = [rootId];
+  levels[rootId] = 0;
+  while (queue.length) {
+    const cur = queue.shift();
+    (childMap[cur] || []).forEach(child => {
+      if (levels[child] === undefined) {
+        levels[child] = levels[cur] + 1;
+        queue.push(child);
+      }
+    });
+  }
+  const maxSoFar = Math.max(0, ...Object.values(levels));
+  nodes.forEach(n => {
+    if (levels[n.id] === undefined) levels[n.id] = maxSoFar + 1;
+  });
+  return calcLayout(nodes, levels, true);
+}
+
+function calcLayout(nodes, levels, flipY = false) {
   const byDepth = {};
   Object.entries(levels).forEach(([id, d]) => {
     if (!byDepth[d]) byDepth[d] = [];
@@ -48,44 +79,53 @@ function buildTreeLayout(nodes, edges, rootId) {
     ...Object.values(byDepth).map(row => row.length * NW + (row.length - 1) * HGAP)
   );
 
+  const totalH = (maxDepth + 1) * (NH + VGAP) - VGAP;
+
   const pos = {};
   for (let d = 0; d <= maxDepth; d++) {
     const row    = byDepth[d] || [];
     const rowW   = row.length * NW + (row.length - 1) * HGAP;
     const offset = (maxRowW - rowW) / 2;
+    // flipY: level 0 (root) at bottom, deeper levels go up
+    const yRow   = flipY ? totalH - d * (NH + VGAP) - NH : d * (NH + VGAP);
     row.forEach((id, i) => {
-      pos[id] = { x: offset + i * (NW + HGAP), y: d * (NH + VGAP) };
+      pos[id] = { x: offset + i * (NW + HGAP), y: yRow };
     });
   }
 
   const svgW = maxRowW + PAD * 2;
-  const svgH = (maxDepth + 1) * (NH + VGAP) - VGAP + PAD * 2 + 20;
-  return { pos, levels, byDepth, maxDepth, svgW, svgH };
+  const svgH = totalH + PAD * 2 + 20;
+  return { pos, levels, svgW, svgH };
 }
 
-function EdgePath({ from, to, label, pos, levels, visible }) {
+// ── Edge ───────────────────────────────────────────────────────────────────
+function EdgePath({ from, to, label, pos, levels, visible, backward }) {
   const fp = pos[from], tp = pos[to];
   if (!fp || !tp) return null;
 
-  const fx = PAD + fp.x + NW / 2;
-  const fy = PAD + fp.y + NH;
-  const tx = PAD + tp.x + NW / 2;
-  const ty = PAD + tp.y;
-  const my = (fy + ty) / 2;
+  // In backward mode swap visual direction so arrows flow top→down
+  // forward: parent-bottom → child-top
+  // backward: positions are flipped so child is above parent;
+  //           draw from child-bottom (visually upper node) → parent-top (visually lower node)
+  const [sx, sy_start, ex, ey_start] = backward
+    ? [PAD + tp.x + NW / 2, PAD + tp.y + NH,  PAD + fp.x + NW / 2, PAD + fp.y]
+    : [PAD + fp.x + NW / 2, PAD + fp.y + NH,  PAD + tp.x + NW / 2, PAD + tp.y];
+
+  const my = (sy_start + ey_start) / 2;
 
   const sameLevel = levels[from] === levels[to];
   let d;
   if (sameLevel) {
     const bend = 55;
-    d = `M ${fx} ${fy - NH / 2} C ${fx} ${fy + bend}, ${tx} ${ty - bend}, ${tx} ${ty - NH / 2}`;
-  } else if (Math.abs(fx - tx) < 2) {
-    d = `M ${fx} ${fy} L ${tx} ${ty}`;
+    d = `M ${sx} ${sy_start - NH / 2} C ${sx} ${sy_start + bend}, ${ex} ${ey_start - bend}, ${ex} ${ey_start - NH / 2}`;
+  } else if (Math.abs(sx - ex) < 2) {
+    d = `M ${sx} ${sy_start} L ${ex} ${ey_start}`;
   } else {
-    d = `M ${fx} ${fy} C ${fx} ${my}, ${tx} ${my}, ${tx} ${ty}`;
+    d = `M ${sx} ${sy_start} C ${sx} ${my}, ${ex} ${my}, ${ex} ${ey_start}`;
   }
 
-  // edge becomes visible when the DESTINATION level is revealed
-  const destLevel = levels[to];
+  // Animate based on destination level in current direction
+  const destLevel = backward ? levels[from] : levels[to];
 
   return (
     <g style={{
@@ -94,8 +134,12 @@ function EdgePath({ from, to, label, pos, levels, visible }) {
     }}>
       <path d={d} fill="none" stroke="#6366f1" strokeWidth="1.8" opacity="0.9" markerEnd="url(#arr)" />
       {label && (
-        <text x={(fx + tx) / 2} y={my - 6} textAnchor="middle" fontSize="9"
-          fontFamily="monospace" fill="#818cf8" letterSpacing="0.04em">
+        <text
+          x={(sx + ex) / 2}
+          y={my - 6}
+          textAnchor="middle" fontSize="9"
+          fontFamily="monospace" fill="#818cf8" letterSpacing="0.04em"
+        >
           {label}
         </text>
       )}
@@ -103,6 +147,7 @@ function EdgePath({ from, to, label, pos, levels, visible }) {
   );
 }
 
+// ── Node ───────────────────────────────────────────────────────────────────
 function NodeCard({ node, pos, isRoot, isActive, onClick, level, visible }) {
   const p = pos[node.id];
   if (!p) return null;
@@ -112,8 +157,7 @@ function NodeCard({ node, pos, isRoot, isActive, onClick, level, visible }) {
   const t = TYPE[node.type] || TYPE.function;
   const shortLabel = node.label.length > 22 ? node.label.slice(0, 21) + '...' : node.label;
   const shortFile  = node.file.length  > 24 ? '...' + node.file.slice(-23)   : node.file;
-
-  const delay = level * LEVEL_DELAY;
+  const delay      = level * LEVEL_DELAY;
 
   return (
     <g
@@ -153,17 +197,18 @@ function NodeCard({ node, pos, isRoot, isActive, onClick, level, visible }) {
   );
 }
 
-export default function FlowGraph({ flowData }) {
+// ── Main ───────────────────────────────────────────────────────────────────
+export default function FlowGraph({ flowData, direction = 'forward' }) {
   const [activeId,  setActiveId]  = useState(null);
   const [animReady, setAnimReady] = useState(false);
 
-  // reset and retrigger grow animation whenever flowData changes
+  // Retrigger grow animation on data or direction change
   useEffect(() => {
     setActiveId(null);
     setAnimReady(false);
     const t = setTimeout(() => setAnimReady(true), 60);
     return () => clearTimeout(t);
-  }, [flowData]);
+  }, [flowData, direction]);
 
   const handleNodeClick = useCallback(id => {
     setActiveId(prev => prev === id ? null : id);
@@ -173,14 +218,18 @@ export default function FlowGraph({ flowData }) {
   if (!flowData.nodes || flowData.edges === undefined) return null;
 
   const { nodes, edges, root: rootId } = flowData;
-  const { pos, levels, svgW, svgH }    = buildTreeLayout(nodes, edges, rootId);
+  const backward = direction === 'backward';
+
+  const { pos, levels, svgW, svgH } = backward
+    ? buildBackwardLayout(nodes, edges, rootId)
+    : buildForwardLayout(nodes, edges, rootId);
+
   const activeNode = nodes.find(n => n.id === activeId);
   const hasActive  = !!activeNode;
 
   return (
     <>
       <style>{`
-        /* outer shell — viewport wide without leaking into parent layout */
         .fg-shell {
           position: relative;
           width: 100vw;
@@ -192,25 +241,20 @@ export default function FlowGraph({ flowData }) {
           contain: layout;
         }
 
-        /* GRAPH PANEL — centered when no node selected, slides to left when one is */
+        /* graph panel: full width centered → shrinks to 50% left on click */
         .fg-graph-panel {
           position: absolute;
           top: 0;
+          left: 0;
           height: 100%;
+          width: 100%;
           display: flex;
           flex-direction: column;
           overflow: hidden;
-
-          /* centered by default */
-          left: 0;
-          width: 100%;
-          transition: width 0.45s cubic-bezier(0.4,0,0.2,1),
-                      left  0.45s cubic-bezier(0.4,0,0.2,1);
+          transition: width 0.45s cubic-bezier(0.4,0,0.2,1);
         }
         .fg-graph-panel.has-active {
           width: 50%;
-          left: 0;
-          border-right: 1px solid rgba(71,85,105,0.3);
         }
 
         .fg-hint {
@@ -223,28 +267,42 @@ export default function FlowGraph({ flowData }) {
           flex-shrink: 0;
           margin: 0;
         }
+
+        /* hide all scrollbars on the graph scroll area */
         .fg-scroll {
           flex: 1;
-          overflow-x: auto;
-          overflow-y: auto;
+          overflow: auto;
           display: flex;
           align-items: flex-start;
-          justify-content: center;   /* keeps SVG centered inside the panel */
+          justify-content: center;
+          scrollbar-width: none;        /* Firefox */
+          -ms-overflow-style: none;     /* IE/Edge */
+        }
+        .fg-scroll::-webkit-scrollbar {
+          display: none;                /* Chrome/Safari */
         }
 
-        /* CODE PANEL — slides in from the right */
+        /* code panel: off-screen right → slides in */
         .fg-code-panel {
           position: absolute;
           top: 0;
           right: 0;
           width: 50%;
           height: 100%;
+          /* hide scrollbar on code panel too */
           overflow-y: auto;
+          scrollbar-width: none;
+          -ms-overflow-style: none;
           transform: translateX(100%);
           opacity: 0;
           transition: transform 0.45s cubic-bezier(0.4,0,0.2,1),
                       opacity  0.35s ease;
           pointer-events: none;
+          /* no border — no white line */
+          border-left: none;
+        }
+        .fg-code-panel::-webkit-scrollbar {
+          display: none;
         }
         .fg-code-panel.has-active {
           transform: translateX(0);
@@ -268,7 +326,7 @@ export default function FlowGraph({ flowData }) {
 
       <div className="fg-shell">
 
-        {/* GRAPH — centered, slides left on click */}
+        {/* GRAPH */}
         <div className={`fg-graph-panel ${hasActive ? 'has-active' : ''}`}>
           <p className="fg-hint">Click a node to view its code</p>
           <div className="fg-scroll">
@@ -286,13 +344,11 @@ export default function FlowGraph({ flowData }) {
                 </marker>
               </defs>
 
-              {/* Edges — fade in when destination level is revealed */}
               {edges.map((e, i) => (
                 <EdgePath key={i} from={e.from} to={e.to} label={e.label}
-                  pos={pos} levels={levels} visible={animReady} />
+                  pos={pos} levels={levels} visible={animReady} backward={backward} />
               ))}
 
-              {/* Nodes — grow level by level */}
               {nodes.map(nd => (
                 <NodeCard
                   key={nd.id}
@@ -309,7 +365,7 @@ export default function FlowGraph({ flowData }) {
           </div>
         </div>
 
-        {/* CODE — slides in from right */}
+        {/* CODE PANEL */}
         <div className={`fg-code-panel ${hasActive ? 'has-active' : ''}`}>
           {activeNode
             ? <CodePanel node={activeNode} onClose={() => setActiveId(null)} />
