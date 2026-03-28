@@ -1,4 +1,5 @@
 const { fetchRepoAsZip } = require("../utils/githubZipHandler");
+const globalIndex        = require("../services/analyzer.service");
 
 /**
  * analyze.controller.js
@@ -18,6 +19,7 @@ exports.analyzeRepo = async (req, res) => {
     try {
         const { repoUrl, entryFunction, direction, depth } = req.body;
 
+        // ── validation ────────────────────────────────────────────────────
         if (!repoUrl) {
             return res.status(400).json({
                 success: false,
@@ -32,10 +34,10 @@ exports.analyzeRepo = async (req, res) => {
             });
         }
 
-        // Fix 5: validate direction input — prevent invalid values
+        // validate direction input — prevent invalid values
         const directionSafe = direction === "backward" ? "backward" : "forward";
 
-        // Fix 2: parse depth — must be a positive number if provided
+        // parse depth — must be a positive integer if provided
         const depthSafe = depth && Number.isInteger(Number(depth)) && Number(depth) > 0
             ? Number(depth)
             : null; // null → analyzer uses its own defaults (8 forward / 4 backward)
@@ -52,14 +54,14 @@ exports.analyzeRepo = async (req, res) => {
         // ── step 2: build global index ────────────────────────────────────
         globalIndex.build(repoPath);
 
-        // ── step 3: analyze — Fix 1: use analyzeFunction not trace() ──────
+        // ── step 3: analyze ───────────────────────────────────────────────
         const result = globalIndex.analyzeFunction(
             entryFunction,
             directionSafe,
             depthSafe,
         );
 
-        // Fix 4: check for error field (handles both forward + backward)
+        // check for error field (handles both forward + backward)
         if (!result || result.error) {
             return res.status(404).json({
                 success: false,
@@ -71,7 +73,7 @@ exports.analyzeRepo = async (req, res) => {
         console.log("[analyze] steps     :", result.stats?.steps ?? result.stats?.totalCallers);
         console.log("[analyze] functions :", result.stats?.functions ?? result.stats?.totalCallers);
         console.log("[analyze] api calls :", result.stats?.apiCalls ?? 0);
-        console.log("[analyze] external  :", result.stats?.external ?? 0);   // Fix 3: removed memberCalls
+        console.log("[analyze] external  :", result.stats?.external ?? 0);
         console.log("[analyze] events    :", result.stats?.events ?? 0);
         console.log("[analyze] nodes     :", result.fullGraph?.nodes?.length ?? 0);
         console.log("[analyze] edges     :", result.fullGraph?.edges?.length ?? 0);
@@ -89,7 +91,9 @@ exports.analyzeRepo = async (req, res) => {
         }
 
         return res.status(500).json({
-            error: "Failed to analyze repo",
+            success: false,
+            error:   "Internal analysis error.",
+            details: err.message,
         });
     }
 };

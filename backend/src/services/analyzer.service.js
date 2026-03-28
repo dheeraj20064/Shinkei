@@ -1,5 +1,5 @@
 const path           = require("path");
-const { getAllFiles } = require("../utils/fileWalker");
+const { fileWalker:getAllFiles } = require("../utils/fileWalker");
 const { runParser }  = require("../parser/engine/parserEngine");
 
 /**
