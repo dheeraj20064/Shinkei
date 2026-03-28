@@ -9,6 +9,7 @@ function App() {
   const [flow, setFlow] = useState(null);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [analyzed, setAnalyzed] = useState(false);
 
   // This function now talks to your actual backend
   const handleAnalyze = async (url, fnText) => {
@@ -85,7 +86,7 @@ const handleFetchCode = async (nodeLabel) => {
         </header>
 
         <main className="app-main">
-          <RepoInput onAnalyze={handleAnalyze} loading={loading} />
+          <RepoInput onAnalyze={handleAnalyze} loading={loading} analyzed={analyzed} />
           {flow && !loading && <StatsBar flow={flow.nodes} />}
         </main>
       </div>
