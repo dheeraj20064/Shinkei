@@ -1,8 +1,68 @@
 import { motion, AnimatePresence } from 'framer-motion';
+import { ArrowLeft, Hexagon, Activity, GitBranch } from 'lucide-react';
 import FlowViewer from './FlowViewer';
 import StatsBar from './StatsBar';
 
-export default function GraphView({ isOpen, flow, loading, onBackToWorkspace }) {
+// Background matching HeroView / WorkspaceModal aesthetic
+function FloatingOrbs() {
+  return (
+    <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 0, overflow: 'hidden' }}>
+      {/* Directional sweep — mimics GodRays from top-right */}
+      <div style={{
+        position: 'absolute', inset: 0,
+        background: 'linear-gradient(135deg, rgba(91,33,182,0.12) 0%, rgba(79,70,229,0.06) 25%, transparent 55%)',
+      }} />
+
+      {/* Primary glow — top-right (matches GodRays offsetX/Y) */}
+      <div style={{
+        position: 'absolute', width: '800px', height: '600px',
+        right: '-100px', top: '-200px',
+        background: 'radial-gradient(ellipse, rgba(109,40,217,0.18) 0%, rgba(79,70,229,0.06) 40%, transparent 70%)',
+        filter: 'blur(60px)',
+        animation: 'gv-breathe 8s ease-in-out infinite',
+      }} />
+
+      {/* Secondary glow — center-left */}
+      <div style={{
+        position: 'absolute', width: '600px', height: '600px',
+        left: '-150px', top: '30%',
+        background: 'radial-gradient(circle, rgba(59,7,100,0.12) 0%, transparent 65%)',
+        filter: 'blur(50px)',
+        animation: 'gv-breathe 10s ease-in-out infinite 3s',
+      }} />
+
+      {/* Bloom accent — bottom */}
+      <div style={{
+        position: 'absolute', width: '700px', height: '400px',
+        left: '50%', bottom: '-100px',
+        transform: 'translateX(-50%)',
+        background: 'radial-gradient(ellipse, rgba(2,132,199,0.06) 0%, transparent 70%)',
+        filter: 'blur(40px)',
+        animation: 'gv-breathe 12s ease-in-out infinite 5s',
+      }} />
+
+      {/* Radial vignette — identical to HeroView */}
+      <div style={{
+        position: 'absolute', inset: 0,
+        background: 'radial-gradient(ellipse 80% 60% at 50% 50%, transparent 30%, #07070a 100%)',
+        zIndex: 1,
+      }} />
+
+      {/* Noise grain — matching HeroView opacity */}
+      <div style={{
+        position: 'absolute', inset: 0,
+        opacity: 0.032,
+        backgroundImage:
+          "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")",
+        backgroundRepeat: 'repeat',
+        backgroundSize: '128px 128px',
+        zIndex: 2,
+      }} />
+    </div>
+  );
+}
+
+export default function GraphView({ isOpen, flow, loading, onBackToWorkspace, initialDirection = 'forward', maxSteps = 10 }) {
   return (
     <AnimatePresence initial={false}>
       {isOpen && (
@@ -10,102 +70,300 @@ export default function GraphView({ isOpen, flow, loading, onBackToWorkspace }) 
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.3 }}
+          transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
           className="fixed inset-0 z-50"
-          style={{ background: '#09090b', overflowY: 'auto', overflowX: 'hidden' }}
+          style={{ background: '#07070a', overflowY: 'auto', overflowX: 'hidden' }}
         >
-          <div className="app-shell" style={{ overflow: 'visible', minHeight: '100vh' }}>
-            <div className="orb orb-purple" />
-            <div className="orb orb-blue" />
-            <div className="orb orb-green" />
-            <div className="grid-overlay" />
+          <FloatingOrbs />
 
-            {/* Header area with glass backdrop */}
+          {/* ── Top navigation bar ── */}
+          <motion.div
+            initial={{ y: -24, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ duration: 0.5, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
+            style={{
+              position: 'sticky',
+              top: 0,
+              zIndex: 20,
+              background: 'rgba(7,7,10,0.7)',
+              backdropFilter: 'blur(24px) saturate(1.2)',
+              WebkitBackdropFilter: 'blur(24px) saturate(1.2)',
+              borderBottom: '1px solid rgba(139,92,246,0.08)',
+            }}
+          >
             <div style={{
-              background: 'rgba(9,9,11,0.7)',
-              backdropFilter: 'blur(16px)',
-              borderBottom: '1px solid rgba(124,58,237,0.12)',
-              paddingBottom: '28px',
-              position: 'relative',
-              zIndex: 2,
+              maxWidth: '1400px',
+              margin: '0 auto',
+              padding: '12px 28px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
             }}>
+              {/* Left: Back button */}
+              <button
+                onClick={onBackToWorkspace}
+                style={{
+                  background: 'rgba(139,92,246,0.06)',
+                  border: '1px solid rgba(139,92,246,0.12)',
+                  borderRadius: '10px',
+                  color: '#a78bfa',
+                  fontSize: '13px',
+                  padding: '7px 14px',
+                  cursor: 'pointer',
+                  fontFamily: "'Inter', sans-serif",
+                  fontWeight: 500,
+                  letterSpacing: '0.01em',
+                  transition: 'all 0.25s cubic-bezier(0.22,1,0.36,1)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '7px',
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.borderColor = 'rgba(139,92,246,0.35)';
+                  e.currentTarget.style.background = 'rgba(139,92,246,0.12)';
+                  e.currentTarget.style.color = '#c4b5fd';
+                  e.currentTarget.style.transform = 'translateX(-2px)';
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.borderColor = 'rgba(139,92,246,0.12)';
+                  e.currentTarget.style.background = 'rgba(139,92,246,0.06)';
+                  e.currentTarget.style.color = '#a78bfa';
+                  e.currentTarget.style.transform = 'translateX(0)';
+                }}
+              >
+                <ArrowLeft style={{ width: 14, height: 14 }} />
+                Back
+              </button>
+
+              {/* Center: Brand */}
               <div style={{
-                padding: '36px 24px 0',
-                textAlign: 'center',
-                maxWidth: '640px',
-                margin: '0 auto',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '9px',
               }}>
-                {/* Badge */}
-                <div className="badge" style={{ marginBottom: '20px' }}>⬡ Static AST Analysis Engine</div>
-
-                {/* Title */}
-                <h1 style={{
-                  fontSize: 'clamp(28px, 5vw, 48px)',
-                  fontWeight: 800,
-                  letterSpacing: '-0.03em',
-                  lineHeight: 1.1,
-                  marginBottom: '8px',
+                <div style={{
+                  position: 'relative',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                 }}>
-                  <span className="title-accent">SHINKEI</span>
-                </h1>
-                <p className="app-kanji" style={{ marginBottom: '20px' }}>神経 / Tree Call Graph Visualizer</p>
+                  <Hexagon style={{
+                    width: 18, height: 18,
+                    color: '#7c3aed',
+                    opacity: 0.5,
+                    animation: 'gv-hex-spin 20s linear infinite',
+                  }} />
+                </div>
+                <span style={{
+                  fontFamily: "'Syne', sans-serif",
+                  fontWeight: 800,
+                  fontSize: '13px',
+                  letterSpacing: '0.12em',
+                  background: 'linear-gradient(135deg, rgba(196,181,253,0.7), rgba(167,139,250,0.5))',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  backgroundClip: 'text',
+                }}>
+                  SHINKEI
+                </span>
+              </div>
 
-                {/* Stats */}
-                {flow && !loading && (
-                  <div style={{ marginBottom: '20px' }}>
-                    <StatsBar flow={flow.nodes} />
-                  </div>
-                )}
-
-                {/* Back button */}
-                <button
-                  onClick={onBackToWorkspace}
-                  style={{
-                    background: 'rgba(124,58,237,0.1)',
-                    border: '1px solid rgba(124,58,237,0.25)',
-                    borderRadius: '10px',
-                    color: '#c4b5fd',
-                    fontSize: '13px',
-                    padding: '10px 24px',
-                    cursor: 'pointer',
-                    fontFamily: 'JetBrains Mono, monospace',
-                    letterSpacing: '0.06em',
-                    transition: 'all 0.2s',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                  }}
-                  onMouseEnter={e => {
-                    e.currentTarget.style.borderColor = 'rgba(124,58,237,0.5)';
-                    e.currentTarget.style.background = 'rgba(124,58,237,0.2)';
-                    e.currentTarget.style.color = 'white';
-                  }}
-                  onMouseLeave={e => {
-                    e.currentTarget.style.borderColor = 'rgba(124,58,237,0.25)';
-                    e.currentTarget.style.background = 'rgba(124,58,237,0.1)';
-                    e.currentTarget.style.color = '#c4b5fd';
-                  }}
-                >
-                  ← New Analysis
-                </button>
+              {/* Right: Status indicator */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                fontSize: '11px',
+                fontFamily: "'JetBrains Mono', monospace",
+                color: '#64748b',
+                letterSpacing: '0.03em',
+              }}>
+                <Activity style={{
+                  width: 12, height: 12,
+                  color: flow ? '#22c993' : '#64748b',
+                  opacity: 0.8,
+                }} />
+                <span style={{ color: flow ? '#94a3b8' : '#475569' }}>
+                  {flow ? `${flow.nodes?.length || 0} nodes` : 'idle'}
+                </span>
               </div>
             </div>
+          </motion.div>
 
-            {(flow || loading) && (
+          {/* ── Flow label ── */}
+          {flow && !loading && (
+            <motion.div
+              initial={{ y: 12, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ duration: 0.5, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
+              style={{
+                maxWidth: '800px',
+                margin: '0 auto',
+                padding: '28px 28px 0',
+                position: 'relative',
+                zIndex: 2,
+              }}
+            >
               <div style={{
-                maxWidth: '720px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                marginBottom: '20px',
+              }}>
+                <GitBranch style={{ width: 16, height: 16, color: '#7c3aed', opacity: 0.7 }} />
+                <div>
+                  <h2 style={{
+                    margin: 0,
+                    fontFamily: "'Inter', sans-serif",
+                    fontWeight: 700,
+                    fontSize: '18px',
+                    color: '#f1f5f9',
+                    letterSpacing: '-0.02em',
+                    lineHeight: 1.2,
+                  }}>
+                    Call Graph
+                  </h2>
+                  <p style={{
+                    margin: '3px 0 0',
+                    fontFamily: "'JetBrains Mono', monospace",
+                    fontSize: '12px',
+                    color: '#64748b',
+                    letterSpacing: '0.02em',
+                  }}>
+                    {flow.nodes?.length || 0} nodes · {flow.edges?.length || 0} connections
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* ── Stats section ── */}
+          {flow && !loading && (
+            <motion.div
+              initial={{ y: 16, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ duration: 0.5, delay: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              style={{
+                maxWidth: '800px',
+                margin: '0 auto',
+                padding: '0 28px',
+                position: 'relative',
+                zIndex: 2,
+              }}
+            >
+              <StatsBar flow={flow.nodes} />
+            </motion.div>
+          )}
+
+          {/* ── Graph content ── */}
+          {(flow || loading) && (
+            <motion.div
+              initial={{ y: 24, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ duration: 0.55, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
+              style={{
+                maxWidth: '800px',
                 margin: '0 auto',
                 width: '100%',
-                padding: '0 24px',
+                padding: '12px 28px 100px',
+                position: 'relative',
+                zIndex: 2,
+              }}
+            >
+              <FlowViewer
+                flowData={flow ? flow.nodes : null}
+                graphData={flow}
+                loading={loading}
+                initialDirection={initialDirection}
+                maxSteps={maxSteps}
+              />
+            </motion.div>
+          )}
+
+          {/* Loading state */}
+          {loading && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.4 }}
+              style={{
+                textAlign: 'center',
+                padding: '100px 24px',
+                position: 'relative',
+                zIndex: 2,
+              }}
+            >
+              <div style={{
+                display: 'inline-flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '20px',
               }}>
-                <FlowViewer
-                  flowData={flow ? flow.nodes : null}
-                  graphData={flow}
-                  loading={loading}
-                />
+                {/* Layered spinner */}
+                <div style={{ position: 'relative', width: '56px', height: '56px' }}>
+                  <div style={{
+                    position: 'absolute', inset: 0,
+                    border: '2px solid rgba(139,92,246,0.08)',
+                    borderTopColor: 'rgba(139,92,246,0.4)',
+                    borderRadius: '50%',
+                    animation: 'spin 1.2s linear infinite',
+                  }} />
+                  <div style={{
+                    position: 'absolute', inset: '6px',
+                    border: '2px solid rgba(99,102,241,0.06)',
+                    borderBottomColor: 'rgba(99,102,241,0.3)',
+                    borderRadius: '50%',
+                    animation: 'spin 0.9s linear infinite reverse',
+                  }} />
+                  <div style={{
+                    position: 'absolute', inset: '14px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}>
+                    <Hexagon style={{
+                      width: 16, height: 16,
+                      color: '#7c3aed',
+                      opacity: 0.4,
+                      animation: 'gv-breathe 2s ease-in-out infinite',
+                    }} />
+                  </div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+                  <span style={{
+                    fontFamily: "'Inter', sans-serif",
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    color: '#cbd5e1',
+                    letterSpacing: '-0.01em',
+                  }}>
+                    Building call graph
+                  </span>
+                  <span style={{
+                    fontFamily: "'JetBrains Mono', monospace",
+                    fontSize: '12px',
+                    color: '#64748b',
+                    letterSpacing: '0.04em',
+                  }}>
+                    Parsing AST and resolving edges…
+                  </span>
+                </div>
               </div>
-            )}
-          </div>
+            </motion.div>
+          )}
+
+          <style>{`
+            @keyframes spin {
+              to { transform: rotate(360deg); }
+            }
+            @keyframes gv-breathe {
+              0%, 100% { opacity: 0.7; transform: scale(1); }
+              50% { opacity: 1; transform: scale(1.04); }
+            }
+            @keyframes gv-hex-spin {
+              to { transform: rotate(360deg); }
+            }
+          `}</style>
         </motion.div>
       )}
     </AnimatePresence>

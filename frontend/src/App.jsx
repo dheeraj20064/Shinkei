@@ -9,6 +9,8 @@ function App() {
   const [view, setView] = useState('hero'); // 'hero' | 'workspace' | 'graph'
   const [flow, setFlow] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [graphDirection, setGraphDirection] = useState('forward');
+  const [graphSteps, setGraphSteps] = useState(10);
 
   const handleOpenWorkspace = () => setView('workspace');
 
@@ -25,11 +27,12 @@ function App() {
   };
 
   // This function now talks to your actual backend
-  const handleAnalyze = async (url, fnText) => {
+  const handleAnalyze = async (url, fnText, direction = 'forward', steps = 10) => {
     setFlow(null);
-    setStats(null);
     setLoading(true);
-    const key = forcedKey || resolveFlowKey(url, fnText);
+    setGraphDirection(direction);
+    setGraphSteps(steps);
+    const key = resolveFlowKey(url, fnText);
     setTimeout(() => {
       setFlow(MOCK_FLOWS[key] || MOCK_FLOWS.login);
       setLoading(false);
@@ -61,6 +64,8 @@ function App() {
         flow={flow}
         loading={loading}
         onBackToWorkspace={handleBackToWorkspace}
+        initialDirection={graphDirection}
+        maxSteps={graphSteps}
       />
     </>
   );

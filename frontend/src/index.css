@@ -269,6 +269,15 @@ input::placeholder, textarea::placeholder { color: rgba(255,255,255,0.25); }
   font-family: 'JetBrains Mono', monospace;
   padding: 10px 14px;
 }
+.repo-input[type="number"]::-webkit-outer-spin-button,
+.repo-input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.repo-input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
 
 /* ── Function textarea ──────────────────────────────── */
 .fn-textarea-wrap {

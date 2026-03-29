@@ -1,112 +1,18 @@
 import { useEffect, useState, useCallback } from 'react';
 import CodePanel from './CodePanel';
+import { NODE_TYPES } from '../constants/nodeTypes';
+import {
+  NW, NH, PAD, LEVEL_DELAY,
+  buildForwardLayout, buildBackwardLayout,
+} from '../utils/graphLayout';
 
-const TYPE = {
-  event:    { label: 'Event',    accent: '#EF9F27', bg: 'rgba(239,159,39,0.12)',  border: 'rgba(239,159,39,0.45)',  text: '#FDD68A' },
-  function: { label: 'Function', accent: '#7F77DD', bg: 'rgba(127,119,221,0.12)', border: 'rgba(127,119,221,0.45)', text: '#DEDCF9' },
-  api:      { label: 'API',      accent: '#1D9E75', bg: 'rgba(29,158,117,0.12)',  border: 'rgba(29,158,117,0.45)',  text: '#B5ECDA' },
-  response: { label: 'Response', accent: '#378ADD', bg: 'rgba(55,138,221,0.12)',  border: 'rgba(55,138,221,0.45)',  text: '#C8DFF7' },
-};
-
-const NW         = 200;
-const NH         = 64;
-const HGAP       = 36;
-const VGAP       = 68;
-const PAD        = 48;
-const LEVEL_DELAY = 650;
-
-// ── Build forward graph (root → children) ──────────────────────────────────
-function buildForwardLayout(nodes, edges, rootId) {
-  const childMap = {};
-  nodes.forEach(n => (childMap[n.id] = []));
-  edges.forEach(e => {
-    if (childMap[e.from] !== undefined) childMap[e.from].push(e.to);
-  });
-
-  const levels = {};
-  const queue  = [rootId];
-  levels[rootId] = 0;
-  while (queue.length) {
-    const cur = queue.shift();
-    (childMap[cur] || []).forEach(child => {
-      if (levels[child] === undefined) {
-        levels[child] = levels[cur] + 1;
-        queue.push(child);
-      }
-    });
-  }
-  return calcLayout(nodes, levels);
-}
-
-// ── Build backward graph ──────────────────────────────────────────────────
-// Root sits at BOTTOM. Functions it calls grow UPWARD.
-// Same BFS as forward but Y positions are flipped.
-function buildBackwardLayout(nodes, edges, rootId) {
-  const childMap = {};
-  nodes.forEach(n => (childMap[n.id] = []));
-  edges.forEach(e => {
-    if (childMap[e.from] !== undefined) childMap[e.from].push(e.to);
-  });
-
-  const levels = {};
-  const queue  = [rootId];
-  levels[rootId] = 0;
-  while (queue.length) {
-    const cur = queue.shift();
-    (childMap[cur] || []).forEach(child => {
-      if (levels[child] === undefined) {
-        levels[child] = levels[cur] + 1;
-        queue.push(child);
-      }
-    });
-  }
-  const maxSoFar = Math.max(0, ...Object.values(levels));
-  nodes.forEach(n => {
-    if (levels[n.id] === undefined) levels[n.id] = maxSoFar + 1;
-  });
-  return calcLayout(nodes, levels, true);
-}
-
-function calcLayout(nodes, levels, flipY = false) {
-  const byDepth = {};
-  Object.entries(levels).forEach(([id, d]) => {
-    if (!byDepth[d]) byDepth[d] = [];
-    byDepth[d].push(Number(id));
-  });
-
-  const maxDepth = Math.max(...Object.keys(byDepth).map(Number));
-  const maxRowW  = Math.max(
-    ...Object.values(byDepth).map(row => row.length * NW + (row.length - 1) * HGAP)
-  );
-
-  const totalH = (maxDepth + 1) * (NH + VGAP) - VGAP;
-
-  const pos = {};
-  for (let d = 0; d <= maxDepth; d++) {
-    const row    = byDepth[d] || [];
-    const rowW   = row.length * NW + (row.length - 1) * HGAP;
-    const offset = (maxRowW - rowW) / 2;
-    // flipY: level 0 (root) at bottom, deeper levels go up
-    const yRow   = flipY ? totalH - d * (NH + VGAP) - NH : d * (NH + VGAP);
-    row.forEach((id, i) => {
-      pos[id] = { x: offset + i * (NW + HGAP), y: yRow };
-    });
-  }
-
-  const svgW = maxRowW + PAD * 2;
-  const svgH = totalH + PAD * 2 + 20;
-  return { pos, levels, svgW, svgH };
-}
+const TYPE = NODE_TYPES;
 
 // ── Edge ───────────────────────────────────────────────────────────────────
-function EdgePath({ from, to, label, pos, levels, visible, backward }) {
+function EdgePath({ from, to, label, pos, levels, visible, backward, edgeIndex }) {
   const fp = pos[from], tp = pos[to];
   if (!fp || !tp) return null;
 
-  // In backward mode swap visual direction so arrows flow top→down
-  // forward: parent-bottom → child-top
-  // backward: positions are flipped so child is above parent;
-  //           draw from child-bottom (visually upper node) → parent-top (visually lower node)
   const [sx, sy_start, ex, ey_start] = backward
     ? [PAD + tp.x + NW / 2, PAD + tp.y + NH,  PAD + fp.x + NW / 2, PAD + fp.y]
     : [PAD + fp.x + NW / 2, PAD + fp.y + NH,  PAD + tp.x + NW / 2, PAD + tp.y];
@@ -124,40 +30,77 @@ function EdgePath({ from, to, label, pos, levels, visible, backward }) {
     d = `M ${sx} ${sy_start} C ${sx} ${my}, ${ex} ${my}, ${ex} ${ey_start}`;
   }
 
-  // Animate based on destination level in current direction
   const destLevel = backward ? levels[from] : levels[to];
+  const gradId = `edge-grad-${edgeIndex}`;
+  const flowId = `edge-flow-${edgeIndex}`;
 
   return (
     <g style={{
       opacity: visible ? 1 : 0,
-      transition: `opacity 0.6s ease ${destLevel * LEVEL_DELAY + 150}ms`,
+      transition: `opacity 0.7s ease ${destLevel * LEVEL_DELAY + 150}ms`,
     }}>
-      <path d={d} fill="none" stroke="#6366f1" strokeWidth="1.8" opacity="0.9" markerEnd="url(#arr)" />
-      {label && (
-        <text
-          x={(sx + ex) / 2}
-          y={my - 6}
-          textAnchor="middle" fontSize="11"
-          fontFamily="monospace" fill="#a5b4fc" letterSpacing="0.04em" fontWeight="500"
-        >
-          {label}
-        </text>
+      {/* Soft glow layer */}
+      <path d={d} fill="none" stroke="rgba(99,102,241,0.08)" strokeWidth="8"
+        filter="url(#edge-glow)" />
+      {/* Main edge */}
+      <path d={d} fill="none" stroke={`url(#${gradId})`} strokeWidth="1.5" opacity="0.7"
+        markerEnd="url(#arr)" strokeLinecap="round" />
+
+      {/* Animated flow dot */}
+      {visible && (
+        <circle r="2.5" fill="#818cf8" opacity="0.6">
+          <animateMotion dur={`${2 + edgeIndex * 0.3}s`} repeatCount="indefinite" path={d} />
+        </circle>
       )}
+
+      {/* Edge label */}
+      {label && (
+        <g>
+          <rect
+            x={(sx + ex) / 2 - label.length * 3.2 - 8}
+            y={my - 16}
+            width={label.length * 6.4 + 16}
+            height={20}
+            rx={6}
+            fill="rgba(7,7,10,0.9)"
+            stroke="rgba(99,102,241,0.12)"
+            strokeWidth="0.5"
+          />
+          <text
+            x={(sx + ex) / 2}
+            y={my - 3}
+            textAnchor="middle" fontSize="10"
+            fontFamily="'JetBrains Mono', monospace" fill="#818cf8" letterSpacing="0.04em" fontWeight="500"
+          >
+            {label}
+          </text>
+        </g>
+      )}
+      {/* Gradient def */}
+      <defs>
+        <linearGradient id={gradId} x1={sx} y1={sy_start} x2={ex} y2={ey_start} gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#6366f1" stopOpacity="0.35" />
+          <stop offset="50%" stopColor="#818cf8" stopOpacity="0.7" />
+          <stop offset="100%" stopColor="#a78bfa" stopOpacity="0.35" />
+        </linearGradient>
+      </defs>
     </g>
   );
 }
 
 // ── Node ───────────────────────────────────────────────────────────────────
 function NodeCard({ node, pos, isRoot, isActive, onClick, level, visible }) {
+  const [hovered, setHovered] = useState(false);
   const p = pos[node.id];
   if (!p) return null;
 
   const x = PAD + p.x;
   const y = PAD + p.y;
   const t = TYPE[node.type] || TYPE.function;
-  const shortLabel = node.label.length > 22 ? node.label.slice(0, 21) + '...' : node.label;
-  const shortFile  = node.file.length  > 24 ? '...' + node.file.slice(-23)   : node.file;
+  const shortLabel = node.label.length > 22 ? node.label.slice(0, 21) + '…' : node.label;
+  const shortFile  = node.file.length  > 24 ? '…' + node.file.slice(-23) : node.file;
   const delay      = level * LEVEL_DELAY;
+  const isHighlighted = isRoot || isActive || hovered;
 
   return (
     <g
@@ -168,47 +111,90 @@ function NodeCard({ node, pos, isRoot, isActive, onClick, level, visible }) {
         transition: `opacity 0.7s ease ${delay}ms, transform 0.7s cubic-bezier(0.22,1,0.36,1) ${delay}ms`,
       }}
       onClick={() => onClick(node.id)}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
+      {/* Outer glow for highlighted */}
+      {isHighlighted && (
+        <rect x={x - 5} y={y - 5} width={NW + 10} height={NH + 10} rx={15}
+          fill="none" stroke={t.accent} strokeWidth="1" opacity={0.2}
+          filter="url(#node-glow)" />
+      )}
+
+      {/* Root halo */}
       {isRoot && (
-        <rect x={x - 5} y={y - 5} width={NW + 10} height={NH + 10} rx={14}
-          fill={t.accent} opacity={0.13} />
+        <>
+          <rect x={x - 8} y={y - 8} width={NW + 16} height={NH + 16} rx={18}
+            fill="none" stroke={t.accent} strokeWidth="0.5" opacity={0.15}
+            strokeDasharray="6 4" />
+          <rect x={x - 3} y={y - 3} width={NW + 6} height={NH + 6} rx={14}
+            fill={t.glow} opacity={0.08} />
+        </>
       )}
-      {isActive && (
-        <rect x={x - 3} y={y - 3} width={NW + 6} height={NH + 6} rx={12}
-          fill={t.accent} opacity={0.22} />
+
+      {/* Card background */}
+      <rect x={x} y={y} width={NW} height={NH} rx={12}
+        fill={isHighlighted ? t.bg.replace('0.08', '0.14') : t.bg}
+        stroke={isHighlighted ? t.accent : t.border}
+        strokeWidth={isHighlighted ? 1.2 : 0.5}
+        style={{ transition: 'all 0.25s ease' }}
+      />
+
+      {/* Top edge glow line */}
+      {isHighlighted && (
+        <line x1={x + 20} y1={y} x2={x + NW - 20} y2={y}
+          stroke={t.accent} strokeWidth="1.5" opacity={0.4}
+          strokeLinecap="round" />
       )}
-      <rect x={x} y={y} width={NW} height={NH} rx={9}
-        fill={t.bg}
-        stroke={isRoot || isActive ? t.accent : t.border}
-        strokeWidth={isRoot ? 1.8 : isActive ? 1.8 : 0.8} />
-      <rect x={x} y={y} width={4} height={NH} rx={2} fill={t.accent} />
-      <text x={x + 14} y={y + 18} fontSize="10" fontFamily="monospace"
-        fontWeight="700" fill={t.accent} letterSpacing="0.10em">
-        {t.label.toUpperCase()}{isRoot ? ' · ROOT' : ''}
+
+      {/* Left accent bar */}
+      <rect x={x} y={y + 10} width={2.5} height={NH - 20} rx={1.25} fill={t.accent}
+        opacity={isHighlighted ? 0.9 : 0.5}
+        style={{ transition: 'opacity 0.2s' }} />
+
+      {/* Type badge */}
+      <text x={x + 14} y={y + 20} fontSize="10" fontFamily="'JetBrains Mono', monospace"
+        fontWeight="700" fill={t.accent} letterSpacing="0.1em"
+        opacity={isHighlighted ? 1 : 0.85}
+        style={{ transition: 'opacity 0.2s' }}>
+        {t.label.toUpperCase()}{isRoot ? '  ·  ROOT' : ''}
       </text>
-      <text x={x + 14} y={y + 37} fontSize="13" fontFamily="monospace"
-        fontWeight="600" fill={t.text}>
+
+      {/* Function label */}
+      <text x={x + 14} y={y + 39} fontSize="13" fontFamily="'JetBrains Mono', monospace"
+        fontWeight="600" fill={isHighlighted ? '#f8fafc' : '#e2e8f0'}
+        style={{ transition: 'fill 0.2s' }}>
         {shortLabel}
       </text>
-      <text x={x + 14} y={y + 53} fontSize="11" fontFamily="monospace" fill="#64748b">
+
+      {/* File info */}
+      <text x={x + 14} y={y + 55} fontSize="10" fontFamily="'JetBrains Mono', monospace"
+        fill="#64748b" opacity={isHighlighted ? 0.85 : 0.7}
+        style={{ transition: 'opacity 0.2s' }}>
         {shortFile} :{node.line}
       </text>
+
+      {/* Active click indicator */}
+      {isActive && (
+        <circle cx={x + NW - 12} cy={y + 12} r="3" fill={t.accent} opacity={0.7}>
+          <animate attributeName="opacity" values="0.7;0.3;0.7" dur="1.5s" repeatCount="indefinite" />
+        </circle>
+      )}
     </g>
   );
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────
-export default function FlowGraph({ flowData, direction = 'forward' }) {
+export default function FlowGraph({ flowData, direction = 'forward', maxSteps = 10 }) {
   const [activeId,  setActiveId]  = useState(null);
   const [animReady, setAnimReady] = useState(false);
 
-  // Retrigger grow animation on data or direction change
   useEffect(() => {
     setActiveId(null);
     setAnimReady(false);
     const t = setTimeout(() => setAnimReady(true), 60);
     return () => clearTimeout(t);
-  }, [flowData, direction]);
+  }, [flowData, direction, maxSteps]);
 
   const handleNodeClick = useCallback(id => {
     setActiveId(prev => prev === id ? null : id);
@@ -220,11 +206,11 @@ export default function FlowGraph({ flowData, direction = 'forward' }) {
   const { nodes, edges, root: rootId } = flowData;
   const backward = direction === 'backward';
 
-  const { pos, levels, svgW, svgH } = backward
-    ? buildBackwardLayout(nodes, edges, rootId)
-    : buildForwardLayout(nodes, edges, rootId);
+  const { pos, levels, svgW, svgH, filteredNodes, filteredEdges } = backward
+    ? buildBackwardLayout(nodes, edges, rootId, maxSteps)
+    : buildForwardLayout(nodes, edges, rootId, maxSteps);
 
-  const activeNode = nodes.find(n => n.id === activeId);
+  const activeNode = filteredNodes.find(n => n.id === activeId);
   const hasActive  = !!activeNode;
 
   return (
@@ -234,20 +220,18 @@ export default function FlowGraph({ flowData, direction = 'forward' }) {
           position: relative;
           width: 100vw;
           margin-left: calc(-50vw + 50%);
-          min-height: 100vh;
           display: flex;
           flex-direction: row;
           overflow: visible;
         }
 
-        /* graph panel: full width centered → shrinks to 50% left on click */
         .fg-graph-panel {
           position: relative;
           width: 100%;
           display: flex;
           flex-direction: column;
           overflow: visible;
-          transition: width 0.45s cubic-bezier(0.4,0,0.2,1);
+          transition: width 0.5s cubic-bezier(0.22,1,0.36,1);
         }
         .fg-graph-panel.has-active {
           width: 50%;
@@ -255,16 +239,15 @@ export default function FlowGraph({ flowData, direction = 'forward' }) {
 
         .fg-hint {
           text-align: center;
-          font-size: 11px;
-          color: #334155;
-          font-family: 'JetBrains Mono', monospace;
-          padding: 10px 0 6px;
-          letter-spacing: 0.05em;
+          font-size: 12px;
+          color: rgba(100,116,139,0.7);
+          font-family: 'Inter', sans-serif;
+          padding: 6px 0 2px;
+          letter-spacing: 0.03em;
           flex-shrink: 0;
           margin: 0;
         }
 
-        /* hide all scrollbars on the graph scroll area */
         .fg-scroll {
           display: flex;
           align-items: flex-start;
@@ -272,26 +255,23 @@ export default function FlowGraph({ flowData, direction = 'forward' }) {
           overflow: visible;
         }
         .fg-scroll::-webkit-scrollbar {
-          display: none;                /* Chrome/Safari */
+          display: none;
         }
 
-        /* code panel: off-screen right → slides in */
         .fg-code-panel {
           position: absolute;
           top: 0;
           right: 0;
+          bottom: 0;
           width: 50%;
-          height: 100%;
-          /* hide scrollbar on code panel too */
           overflow-y: auto;
           scrollbar-width: none;
           -ms-overflow-style: none;
           transform: translateX(100%);
           opacity: 0;
-          transition: transform 0.45s cubic-bezier(0.4,0,0.2,1),
-                      opacity  0.35s ease;
+          transition: transform 0.5s cubic-bezier(0.22,1,0.36,1),
+                      opacity 0.4s ease;
           pointer-events: none;
-          /* no border — no white line */
           border-left: none;
         }
         .fg-code-panel::-webkit-scrollbar {
@@ -301,6 +281,7 @@ export default function FlowGraph({ flowData, direction = 'forward' }) {
           transform: translateX(0);
           opacity: 1;
           pointer-events: all;
+          border-left: 1px solid rgba(139,92,246,0.08);
         }
 
         .fg-empty {
@@ -321,7 +302,7 @@ export default function FlowGraph({ flowData, direction = 'forward' }) {
 
         {/* GRAPH */}
         <div className={`fg-graph-panel ${hasActive ? 'has-active' : ''}`}>
-          <p className="fg-hint">Click a node to view its code</p>
+          <p className="fg-hint">Click a node to inspect</p>
           <div className="fg-scroll">
             <svg
               width={svgW}
@@ -330,19 +311,29 @@ export default function FlowGraph({ flowData, direction = 'forward' }) {
               style={{ display: 'block', flexShrink: 0 }}
             >
               <defs>
+                {/* Arrow marker */}
                 <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5"
                   markerWidth="6" markerHeight="6" orient="auto">
-                  <path d="M1 1L9 5L1 9" fill="none" stroke="#6366f1"
-                    strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M1 1L9 5L1 9" fill="none" stroke="#818cf8"
+                    strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.7" />
                 </marker>
+
+                {/* Glow filters */}
+                <filter id="edge-glow" x="-50%" y="-50%" width="200%" height="200%">
+                  <feGaussianBlur stdDeviation="4" result="blur" />
+                </filter>
+                <filter id="node-glow" x="-50%" y="-50%" width="200%" height="200%">
+                  <feGaussianBlur stdDeviation="6" result="blur" />
+                </filter>
               </defs>
 
-              {edges.map((e, i) => (
+              {filteredEdges.map((e, i) => (
                 <EdgePath key={i} from={e.from} to={e.to} label={e.label}
-                  pos={pos} levels={levels} visible={animReady} backward={backward} />
+                  pos={pos} levels={levels} visible={animReady} backward={backward}
+                  edgeIndex={i} />
               ))}
 
-              {nodes.map(nd => (
+              {filteredNodes.map(nd => (
                 <NodeCard
                   key={nd.id}
                   node={nd}

@@ -1,434 +1,355 @@
-// CodePanel.jsx
-// Displays the code snippet for a clicked graph node.
-// In production, replace MOCK_CODE with real file contents fetched from your backend/GitHub API.
-
-const TYPE_COLOR = {
-  event:    '#EF9F27',
-  function: '#7F77DD',
-  api:      '#1D9E75',
-  response: '#378ADD',
-};
-
-// Mock code snippets keyed by node label.
-// Replace these with real fetched code in production.
-const MOCK_CODE = {
-  'handleSubmit': `async function handleSubmit(e) {
-  e.preventDefault();
-  const form = e.target;
-  const isValid = validateCredentials(form);
-  if (!isValid) return;
-
-  try {
-    const result = await loginUser(
-      form.email.value,
-      form.password.value
-    );
-    navigate('/dashboard');
-  } catch (err) {
-    setError(err.message);
-  }
-}`,
-
-  'validateCredentials': `function validateCredentials(form) {
-  const email = form.email.value.trim();
-  const password = form.password.value;
-
-  if (!email || !email.includes('@')) {
-    setError('Invalid email address');
-    return false;
-  }
-  if (password.length < 8) {
-    setError('Password too short');
-    return false;
-  }
-  return true;
-}`,
-
-  'loginUser': `export async function loginUser(email, password) {
-  const res = await fetch('/api/auth/login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password }),
-  });
-  if (!res.ok) throw new Error('Login failed');
-  return res.json();
-}`,
-
-  'POST /api/auth/login': `router.post('/login', authController.login);
-
-// Route: POST /api/auth/login
-// Controller: authController.login
-// Middleware: validateBody, rateLimiter`,
-
-  'authController.login': `exports.login = async (req, res) => {
-  const { email, password } = req.body;
-  try {
-    const user = await UserService
-      .findByEmail(email);
-    if (!user) return res
-      .status(401)
-      .json({ error: 'Not found' });
-
-    const token = await jwt.sign(
-      { id: user._id },
-      process.env.JWT_SECRET
-    );
-    res.json({ token, user });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-};`,
-
-  'UserService.findByEmail': `exports.findByEmail = async (email) => {
-  const user = await User.findOne({ email })
-    .select('+password')
-    .lean();
-
-  if (!user) return null;
-
-  const match = await bcrypt.compare(
-    password, user.password
-  );
-  if (!match) return null;
-  return user;
-};`,
-
-  'bcrypt.compare': `// bcrypt.compare — from 'bcryptjs'
-const match = await bcrypt.compare(
-  plainPassword,   // from request body
-  hashedPassword   // stored in DB
-);
-// returns true if match, false otherwise`,
-
-  'jwt.sign': `// jwt.sign — from 'jsonwebtoken'
-const token = jwt.sign(
-  { id: user._id, role: user.role },
-  process.env.JWT_SECRET,
-  { expiresIn: '7d' }
-);`,
-
-  "res.json({token,user})": `// Final response sent to client
-res.status(200).json({
-  token,           // JWT for auth headers
-  user: {
-    id: user._id,
-    email: user.email,
-    name: user.name,
-  }
-});`,
-
-  "navigate('/dashboard')": `// React Router navigation
-// Called after successful login
-navigate('/dashboard', {
-  replace: true,   // removes /login from history
-  state: { fromLogin: true },
-});`,
-
-  'handleCheckout': `async function handleCheckout(cartItems) {
-  const valid = validateCart(cartItems);
-  if (!valid) return;
-
-  const res = await fetch('/api/orders/create', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ items: cartItems }),
-  });
-  const data = await res.json();
-  navigate('/order-confirmation/' + data.orderId);
-}`,
-
-  'validateCart': `function validateCart(items) {
-  if (!items || items.length === 0) {
-    setError('Cart is empty');
-    return false;
-  }
-  const hasInvalid = items.some(
-    i => !i.id || i.qty < 1
-  );
-  if (hasInvalid) {
-    setError('Invalid item in cart');
-    return false;
-  }
-  return true;
-}`,
-
-  'POST /api/orders': `router.post('/create',
-  authenticate,
-  orderController.create
-);`,
-
-  'OrderService.create': `exports.createOrder = async (data) => {
-  const order = await Order.create({
-    items: data.items,
-    user: data.userId,
-    status: 'pending',
-  });
-  await PaymentService.charge(order.total);
-  await InventoryService.deduct(order.items);
-  return order;
-};`,
-
-  'PaymentService.charge': `exports.charge = async (amount) => {
-  const intent = await stripe.paymentIntents
-    .create({
-      amount: Math.round(amount * 100),
-      currency: 'usd',
-    });
-  return intent;
-};`,
-
-  'InventoryService.deduct': `exports.deduct = async (items) => {
-  for (const item of items) {
-    await Product.findByIdAndUpdate(
-      item.id,
-      { $inc: { stock: -item.qty } },
-      { new: true }
-    );
-  }
-};`,
-
-  "res.json({orderId})": `res.status(201).json({
-  orderId: order._id,
-  status: order.status,
-  total: order.total,
-});`,
-
-  'handleSearch': `function handleSearch(query) {
-  const debounced = debounce(query, 300);
-  fetch('/api/search?q=' + debounced)
-    .then(r => r.json())
-    .then(data => setResults(data.results));
-}`,
-
-  'debounce': `function debounce(fn, delay) {
-  let timer;
-  return (...args) => {
-    clearTimeout(timer);
-    timer = setTimeout(
-      () => fn(...args), delay
-    );
-  };
-}`,
-
-  'GET /api/search': `router.get('/',
-  cacheMiddleware(60),
-  searchController.query
-);`,
-
-  'SearchService.query': `exports.query = async (params) => {
-  const { q, page = 1, limit = 20 } = params;
-  const results = await Product.find({
-    $text: { $search: q }
-  })
-  .skip((page - 1) * limit)
-  .limit(limit)
-  .lean();
-  return { results, total: results.length };
-};`,
-
-  'db.collection.find': `// MongoDB query
-db.products.find({
-  $text: { $search: query },
-  stock: { $gt: 0 },
-})
-.sort({ score: { $meta: 'textScore' } })
-.limit(20)`,
-
-  "res.json({results})": `res.status(200).json({
-  results,
-  total,
-  page,
-  hasMore: total === limit,
-});`,
-
-  'setResults': `// React state update
-setResults(data.results);
-setTotal(data.total);
-setLoading(false);`,
-};
-
-function getCode(node) {
-  return MOCK_CODE[node.label] || `// ${node.file}
-// Function: ${node.label}
-// Line: ${node.line}
-
-// Source code not available in mock mode.
-// In production this would show the real
-// file contents fetched from your repository.`;
-}
-
-// Very simple syntax highlighter — colours keywords, strings, comments
-function highlight(code) {
-  const lines = code.split('\n');
-  return lines.map((line, i) => {
-    const isComment = line.trim().startsWith('//');
-    let content = line;
-
-    if (isComment) {
-      return (
-        <span key={i} style={{ color: '#475569' }}>
-          {line}{'\n'}
-        </span>
-      );
-    }
-
-    // Colour keywords
-    const keywords = ['async','function','const','let','var','return','await',
-      'if','else','for','of','try','catch','export','exports','import','new',
-      'true','false','null','undefined','throw'];
-
-    const parts = line.split(/(\b(?:async|function|const|let|var|return|await|if|else|for|of|try|catch|export|exports|import|new|true|false|null|undefined|throw)\b|'[^']*'|"[^"]*"|`[^`]*`)/g);
-
-    return (
-      <span key={i}>
-        {parts.map((part, j) => {
-          if (keywords.includes(part.trim())) {
-            return <span key={j} style={{ color: '#c084fc' }}>{part}</span>;
-          }
-          if (/^['"`]/.test(part)) {
-            return <span key={j} style={{ color: '#86efac' }}>{part}</span>;
-          }
-          return <span key={j} style={{ color: '#e2e8f0' }}>{part}</span>;
-        })}
-        {'\n'}
-      </span>
-    );
-  });
-}
+// CodePanel.jsx — Code viewer + AI summary panel for graph nodes
+import { X, FileCode2, Copy, Check, Sparkles, Code2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { TYPE_COLOR, TYPE_LABEL } from '../constants/nodeTypes';
+import { getCode } from '../constants/mockCode';
+import { getSummary } from '../constants/mockSummaries';
+import { highlight } from '../utils/syntaxHighlight';
+import { useTypingAnimation } from '../hooks/useTypingAnimation';
+import SummaryView from './SummaryView';
 
 export default function CodePanel({ node, onClose }) {
-  const t      = TYPE_COLOR[node.type] || '#7F77DD';
-  const code   = getCode(node);
-  const lines  = code.split('\n');
+  const [copied, setCopied] = useState(false);
+  const [showSummary, setShowSummary] = useState(false);
+  const [summarising, setSummarising] = useState(false);
+  const t = TYPE_COLOR[node.type] || '#8B7FE8';
+  const tLabel = TYPE_LABEL[node.type] || 'Function';
+  const code = getCode(node);
+  const lines = code.split('\n');
+  const summary = getSummary(node);
+
+  const typingText = useTypingAnimation(summary.purpose, 14, summarising || showSummary);
+
+  // Reset summary when node changes
+  useEffect(() => {
+    setShowSummary(false);
+    setSummarising(false);
+  }, [node.label]);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleSummarise = () => {
+    if (showSummary) {
+      setShowSummary(false);
+      setSummarising(false);
+      return;
+    }
+    setSummarising(true);
+    // Simulate AI processing delay
+    setTimeout(() => {
+      setSummarising(false);
+      setShowSummary(true);
+    }, 800);
+  };
 
   return (
     <div style={{
       height: '100%',
       display: 'flex',
       flexDirection: 'column',
-      background: 'rgba(7,13,26,0.95)',
-      fontFamily: 'JetBrains Mono, monospace',
+      background: 'rgba(15,10,30,0.97)',
+      fontFamily: "'JetBrains Mono', monospace",
     }}>
 
       {/* Header */}
       <div style={{
         display: 'flex',
-        alignItems: 'center',
+        alignItems: 'flex-start',
         justifyContent: 'space-between',
-        padding: '12px 16px',
-        borderBottom: '1px solid rgba(71,85,105,0.3)',
+        padding: '16px 18px 14px',
+        borderBottom: '1px solid rgba(139,92,246,0.1)',
         flexShrink: 0,
+        background: 'rgba(26,16,53,0.4)',
       }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+          {/* Type badge */}
           <span style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 5,
             fontSize: 9,
             fontWeight: 700,
             color: t,
             letterSpacing: '0.1em',
             textTransform: 'uppercase',
+            background: t + '15',
+            padding: '2px 8px',
+            borderRadius: 4,
+            border: `1px solid ${t}25`,
+            width: 'fit-content',
           }}>
-            {node.type}
+            <span style={{
+              width: 5, height: 5, borderRadius: '50%',
+              background: t, display: 'inline-block',
+            }} />
+            {tLabel}
           </span>
-          <span style={{ fontSize: 13, color: '#e2e8f0', fontWeight: 500 }}>
+
+          {/* Function name */}
+          <span style={{
+            fontSize: 14,
+            color: '#f1f5f9',
+            fontWeight: 600,
+            letterSpacing: '-0.01em',
+            fontFamily: "'JetBrains Mono', monospace",
+          }}>
             {node.label}
           </span>
-          <span style={{ fontSize: 10, color: '#475569' }}>
-            {node.file} · line {node.line}
-          </span>
         </div>
-        <button
-          onClick={onClose}
-          style={{
-            background: 'transparent',
-            border: 'none',
-            color: '#475569',
-            cursor: 'pointer',
-            fontSize: 16,
-            lineHeight: 1,
-            padding: '4px 6px',
-          }}
-        >
-          ✕
-        </button>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {/* Copy button */}
+          <button
+            onClick={handleCopy}
+            style={{
+              background: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(71,85,105,0.2)',
+              borderRadius: 7,
+              color: copied ? '#22c993' : '#475569',
+              cursor: 'pointer',
+              padding: '5px 8px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              fontSize: 10,
+              transition: 'all 0.2s',
+              fontFamily: "'JetBrains Mono', monospace",
+            }}
+            onMouseEnter={e => {
+              if (!copied) e.currentTarget.style.color = '#94a3b8';
+              e.currentTarget.style.borderColor = 'rgba(71,85,105,0.4)';
+            }}
+            onMouseLeave={e => {
+              if (!copied) e.currentTarget.style.color = '#475569';
+              e.currentTarget.style.borderColor = 'rgba(71,85,105,0.2)';
+            }}
+          >
+            {copied ? <Check style={{ width: 12, height: 12 }} /> : <Copy style={{ width: 12, height: 12 }} />}
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+
+          {/* Close button */}
+          <button
+            onClick={onClose}
+            style={{
+              background: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(71,85,105,0.2)',
+              borderRadius: 7,
+              color: '#475569',
+              cursor: 'pointer',
+              padding: '5px 7px',
+              display: 'flex',
+              alignItems: 'center',
+              transition: 'all 0.2s',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.color = '#94a3b8';
+              e.currentTarget.style.borderColor = 'rgba(71,85,105,0.4)';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.color = '#475569';
+              e.currentTarget.style.borderColor = 'rgba(71,85,105,0.2)';
+            }}
+          >
+            <X style={{ width: 14, height: 14 }} />
+          </button>
+        </div>
       </div>
 
       {/* File path bar */}
       <div style={{
-        padding: '6px 16px',
-        background: 'rgba(15,23,42,0.8)',
-        borderBottom: '1px solid rgba(71,85,105,0.2)',
-        fontSize: 10,
+        padding: '8px 18px',
+        background: 'rgba(26,16,53,0.5)',
+        borderBottom: '1px solid rgba(139,92,246,0.08)',
+        fontSize: 11,
         color: '#64748b',
         flexShrink: 0,
         display: 'flex',
         alignItems: 'center',
         gap: 8,
       }}>
-        <span style={{
-          width: 8, height: 8, borderRadius: '50%',
-          background: t, display: 'inline-block', flexShrink: 0,
-        }} />
-        {node.file}
+        <FileCode2 style={{ width: 13, height: 13, color: t, opacity: 0.7 }} />
+        <span style={{ color: '#94a3b8' }}>{node.file}</span>
+        <span style={{ color: '#334155' }}>·</span>
+        <span style={{ color: '#475569' }}>line {node.line}</span>
       </div>
 
-      {/* Code block with line numbers */}
-      <div style={{
-        flex: 1,
-        overflowY: 'auto',
-        display: 'flex',
-      }}>
-        {/* Line numbers */}
-        <div style={{
-          padding: '16px 0',
-          minWidth: 36,
-          background: 'rgba(15,23,42,0.6)',
-          borderRight: '1px solid rgba(71,85,105,0.15)',
-          textAlign: 'right',
-          userSelect: 'none',
+      {/* ── Summarise action bar ── */}
+      <button
+        onClick={handleSummarise}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 10,
+          width: '100%',
+          padding: showSummary ? '10px 18px' : '12px 18px',
+          border: 'none',
+          borderBottom: '1px solid rgba(71,85,105,0.1)',
+          cursor: 'pointer',
           flexShrink: 0,
-        }}>
-          {lines.map((_, i) => (
-            <div key={i} style={{
-              fontSize: 11,
-              color: '#334155',
-              lineHeight: '1.6',
-              paddingRight: 10,
-              paddingLeft: 8,
-            }}>
-              {node.line + i}
-            </div>
-          ))}
-        </div>
+          transition: 'all 0.3s ease',
+          fontFamily: "'Inter', sans-serif",
+          fontSize: 13,
+          fontWeight: 600,
+          letterSpacing: '0.01em',
+          position: 'relative',
+          overflow: 'hidden',
+          ...(showSummary ? {
+            background: 'rgba(15,23,42,0.5)',
+            color: '#94a3b8',
+          } : summarising ? {
+            background: 'linear-gradient(135deg, rgba(109,40,217,0.2) 0%, rgba(79,70,229,0.15) 100%)',
+            color: '#c4b5fd',
+          } : {
+            background: 'linear-gradient(135deg, rgba(109,40,217,0.12) 0%, rgba(79,70,229,0.08) 100%)',
+            color: '#c4b5fd',
+          }),
+        }}
+        onMouseEnter={e => {
+          if (!showSummary && !summarising) {
+            e.currentTarget.style.background = 'linear-gradient(135deg, rgba(109,40,217,0.2) 0%, rgba(79,70,229,0.15) 100%)';
+          }
+          if (showSummary) {
+            e.currentTarget.style.background = 'rgba(15,23,42,0.7)';
+            e.currentTarget.style.color = '#c4b5fd';
+          }
+        }}
+        onMouseLeave={e => {
+          if (!showSummary && !summarising) {
+            e.currentTarget.style.background = 'linear-gradient(135deg, rgba(109,40,217,0.12) 0%, rgba(79,70,229,0.08) 100%)';
+          }
+          if (showSummary) {
+            e.currentTarget.style.background = 'rgba(15,23,42,0.5)';
+            e.currentTarget.style.color = '#94a3b8';
+          }
+        }}
+      >
+        {/* Shimmer effect when not active */}
+        {!showSummary && !summarising && (
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            left: '-100%',
+            width: '100%',
+            height: '100%',
+            background: 'linear-gradient(90deg, transparent, rgba(139,92,246,0.08), transparent)',
+            animation: 'shimmer 3s ease-in-out infinite',
+            pointerEvents: 'none',
+          }} />
+        )}
 
-        {/* Code */}
-        <pre style={{
-          margin: 0,
-          padding: '16px 20px',
-          fontSize: 12,
-          lineHeight: '1.6',
-          overflowX: 'auto',
+        {summarising ? (
+          <span style={{
+            width: 16, height: 16,
+            border: '2px solid rgba(139,92,246,0.3)',
+            borderTopColor: '#c4b5fd',
+            borderRadius: '50%',
+            display: 'inline-block',
+            animation: 'summarise-spin 0.6s linear infinite',
+          }} />
+        ) : showSummary ? (
+          <Code2 style={{ width: 15, height: 15 }} />
+        ) : (
+          <Sparkles style={{ width: 15, height: 15, animation: 'sparkle-pulse 2s ease-in-out infinite' }} />
+        )}
+        {summarising ? 'Analysing code…' : showSummary ? 'Back to Code' : 'Summarise'}
+      </button>
+
+      {/* Content area: code or summary */}
+      {showSummary ? (
+        <SummaryView summary={summary} typing={typingText} accentColor={t} />
+      ) : (
+        <div style={{
           flex: 1,
-          whiteSpace: 'pre',
-          color: '#e2e8f0',
+          overflowY: 'auto',
+          display: 'flex',
         }}>
-          {highlight(code)}
-        </pre>
-      </div>
+          {/* Line numbers */}
+          <div style={{
+            padding: '16px 0',
+            minWidth: 44,
+            background: 'rgba(26,16,53,0.4)',
+            borderRight: '1px solid rgba(139,92,246,0.08)',
+            textAlign: 'right',
+            userSelect: 'none',
+            flexShrink: 0,
+          }}>
+            {lines.map((_, i) => (
+              <div key={i} style={{
+                fontSize: 11,
+                color: '#475569',
+                lineHeight: '1.7',
+                paddingRight: 12,
+                paddingLeft: 8,
+                transition: 'color 0.15s',
+              }}>
+                {node.line + i}
+              </div>
+            ))}
+          </div>
+
+          {/* Code */}
+          <pre style={{
+            margin: 0,
+            padding: '16px 20px',
+            fontSize: 13,
+            lineHeight: '1.7',
+            overflowX: 'auto',
+            flex: 1,
+            whiteSpace: 'pre',
+            color: '#e2e8f0',
+          }}>
+            {highlight(code)}
+          </pre>
+        </div>
+      )}
 
       {/* Footer */}
       <div style={{
-        padding: '8px 16px',
-        borderTop: '1px solid rgba(71,85,105,0.2)',
-        fontSize: 10,
-        color: '#334155',
+        padding: '8px 18px',
+        borderTop: '1px solid rgba(139,92,246,0.08)',
+        fontSize: 11,
+        color: '#475569',
         flexShrink: 0,
         display: 'flex',
-        gap: 16,
+        alignItems: 'center',
+        gap: 12,
+        background: 'rgba(26,16,53,0.3)',
       }}>
-        <span>{lines.length} lines</span>
-        <span style={{ color: t }}>{node.type}</span>
-        <span>mock mode — connect repo for live code</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ color: '#64748b' }}>{showSummary ? 'Summary' : `${lines.length} lines`}</span>
+        </span>
+        <span style={{
+          width: 4, height: 4, borderRadius: '50%',
+          background: '#334155', display: 'inline-block',
+        }} />
+        <span style={{ color: t, opacity: 0.85 }}>{tLabel}</span>
+        <span style={{
+          width: 4, height: 4, borderRadius: '50%',
+          background: '#334155', display: 'inline-block',
+        }} />
+        <span style={{ color: '#475569', fontStyle: 'italic' }}>mock mode</span>
       </div>
+
+      <style>{`
+        @keyframes summarise-spin {
+          to { transform: rotate(360deg); }
+        }
+        @keyframes shimmer {
+          0% { left: -100%; }
+          50% { left: 100%; }
+          100% { left: 100%; }
+        }
+        @keyframes sparkle-pulse {
+          0%, 100% { opacity: 0.8; transform: scale(1); }
+          50% { opacity: 1; transform: scale(1.15); }
+        }
+      `}</style>
     </div>
   );
 }
