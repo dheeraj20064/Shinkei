@@ -77,6 +77,12 @@ class IndexBuilder {
          * @type {Map<string, object>}
          */
         this.files = new Map();
+
+        /**
+         * Flag to signal resolverAdapter that reverseMap should be invalidated
+         * Set to true by _invalidateReverseMap() when index is rebuilt
+         */
+        this._reverseMapInvalidated = false;
     }
 
     // ─── Public ───────────────────────────────────────────────────────────────
@@ -127,6 +133,13 @@ class IndexBuilder {
         this.functionsByName.clear();
         this.routes.clear();
         this.files.clear();
+        this._invalidateReverseMap();
+    }
+
+    _invalidateReverseMap() {
+        // Called whenever index is rebuilt to force reverseMap reconstruction
+        // This is a hook that resolverAdapter will check
+        this._reverseMapInvalidated = true;
     }
 
     _toRelative(absolutePath, repoPath) {

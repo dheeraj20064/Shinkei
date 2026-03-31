@@ -27,18 +27,42 @@ function App() {
   };
 
   // This function now talks to your actual backend
-  const handleAnalyze = async (url, fnText, direction = 'forward', steps = 10) => {
+ const handleAnalyze = async (url, fnText, direction = 'forward', steps = 10) => {
+  setFlow(null);
+  setLoading(true);
+  setGraphDirection(direction);
+  setGraphSteps(steps);
+
+  try {
+    console.log('direction:', direction, 'steps:', steps); // add this
+    const response = await fetch('http://localhost:5000/api/analyze', { // 🔁 your backend URL
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        repoUrl: url,
+        entryFunction: fnText,
+        direction: direction,
+        depth: steps,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      console.error('Analysis failed:', data.error);
+      setFlow(null); // optionally show an error state
+    } else {
+      setFlow(data.flow); // ✅ data.flow matches what GraphView expects
+    }
+
+  } catch (err) {
+    console.error('Network error:', err);
     setFlow(null);
-    setLoading(true);
-    setGraphDirection(direction);
-    setGraphSteps(steps);
-    const key = resolveFlowKey(url, fnText);
-    setTimeout(() => {
-      setFlow(MOCK_FLOWS[key] || MOCK_FLOWS.login);
-      setLoading(false);
-      setView('graph');
-    }, 900);
-  };
+  } finally {
+    setLoading(false);
+    setView('graph');
+  }
+};
 
   // Lock body scroll when workspace/graph is open
   useEffect(() => {

@@ -2,8 +2,6 @@
 import { X, FileCode2, Copy, Check, Sparkles, Code2 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { TYPE_COLOR, TYPE_LABEL } from '../constants/nodeTypes';
-import { getCode } from '../constants/mockCode';
-import { getSummary } from '../constants/mockSummaries';
 import { highlight } from '../utils/syntaxHighlight';
 import { useTypingAnimation } from '../hooks/useTypingAnimation';
 import SummaryView from './SummaryView';
@@ -14,16 +12,17 @@ export default function CodePanel({ node, onClose }) {
   const [summarising, setSummarising] = useState(false);
   const t = TYPE_COLOR[node.type] || '#8B7FE8';
   const tLabel = TYPE_LABEL[node.type] || 'Function';
-  const code = getCode(node);
+  const code = node.code || '// No source code available for this node.';
   const lines = code.split('\n');
-  const summary = getSummary(node);
+  const [summary, setSummary] = useState(null);
 
-  const typingText = useTypingAnimation(summary.purpose, 14, summarising || showSummary);
+  const typingText = useTypingAnimation(summary?.purpose ?? '', 14, summarising || showSummary);
 
   // Reset summary when node changes
   useEffect(() => {
     setShowSummary(false);
     setSummarising(false);
+    setSummary(null);
   }, [node.label]);
 
   const handleCopy = () => {
@@ -32,18 +31,36 @@ export default function CodePanel({ node, onClose }) {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleSummarise = () => {
+  const handleSummarise = async () => {
     if (showSummary) {
       setShowSummary(false);
       setSummarising(false);
       return;
     }
+    if (!node.code) return;
     setSummarising(true);
-    // Simulate AI processing delay
-    setTimeout(() => {
+    try {
+      const res = await fetch('http://localhost:5000/api/explain-function', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: node.code, label: node.label }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSummary({
+          purpose:     data.explanation.explanation,
+          details:     data.explanation.steps      ?? [],
+          calls:       [],
+          complexity:  'Low',
+          sideEffects: [],
+        });
+        setShowSummary(true);
+      }
+    } catch (err) {
+      console.error('Summarise failed:', err);
+    } finally {
       setSummarising(false);
-      setShowSummary(true);
-    }, 800);
+    }
   };
 
   return (
@@ -175,7 +192,7 @@ export default function CodePanel({ node, onClose }) {
         <FileCode2 style={{ width: 13, height: 13, color: t, opacity: 0.7 }} />
         <span style={{ color: '#94a3b8' }}>{node.file}</span>
         <span style={{ color: '#334155' }}>·</span>
-        <span style={{ color: '#475569' }}>line {node.line}</span>
+        <span style={{ color: '#475569' }}>line {node.startLine ?? node.line ?? '—'}</span>
       </div>
 
       {/* ── Summarise action bar ── */}
@@ -288,7 +305,7 @@ export default function CodePanel({ node, onClose }) {
                 paddingLeft: 8,
                 transition: 'color 0.15s',
               }}>
-                {node.line + i}
+                {(node.startLine ?? node.line ?? 1) + i}
               </div>
             ))}
           </div>
@@ -333,7 +350,9 @@ export default function CodePanel({ node, onClose }) {
           width: 4, height: 4, borderRadius: '50%',
           background: '#334155', display: 'inline-block',
         }} />
-        <span style={{ color: '#475569', fontStyle: 'italic' }}>mock mode</span>
+        <span style={{ color: '#475569', fontStyle: 'italic' }}>
+          {node.endLine ? `lines ${node.startLine ?? node.line}–${node.endLine}` : 'live'}
+        </span>
       </div>
 
       <style>{`

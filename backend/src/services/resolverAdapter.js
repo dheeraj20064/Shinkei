@@ -27,6 +27,12 @@ let _reverseMap      = null;
 let _reverseMapEpoch = -1;   // tracks index rebuild cycles
 
 function _ensureReverseMap() {
+    // Check if index was rebuilt (invalidation flag takes priority)
+    if (index._reverseMapInvalidated) {
+        _reverseMap = null;
+        index._reverseMapInvalidated = false;
+    }
+
     // Use file count as a cheap epoch — changes when build() runs
     const epoch = index.files.size;
     if (_reverseMap && _reverseMapEpoch === epoch) return;
@@ -248,8 +254,11 @@ function getCalls(fnInfo, fileData) {
  */
 function getUsedBy(fnId) {
     _ensureReverseMap();
+    console.log("[debug] reverseMap size:", _reverseMap.size);
+    console.log("[debug] looking for:", fnId);
+    console.log("[debug] all keys:", [..._reverseMap.keys()].slice(0, 5));
     const callerIds = _reverseMap.get(fnId) ?? new Set();
-
+    console.log("[debug] callers found:", callerIds.size);
     return Array.from(callerIds)
         .map(id => index.functionsById.get(id))
         .filter(Boolean);

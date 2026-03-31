@@ -66,21 +66,10 @@ const STAT_CONFIG = [
 
 export default function StatsBar({ flow }) {
   const values = {
-    total: flow.length,
-    frontend: flow.filter(
-      s => ['event', 'function'].includes(s.type) &&
-        !s.file.includes('Controller') &&
-        !s.file.includes('Service') &&
-        !s.file.includes('routes')
-    ).length,
-    backend: flow.filter(
-      s => s.file && (
-        s.file.includes('Controller') ||
-        s.file.includes('Service') ||
-        s.file.includes('routes')
-      )
-    ).length,
-    api: flow.filter(s => s.type === 'api').length,
+    total:    flow.length,
+    frontend: flow.filter(s => s.type === 'frontend' || s.type === 'event').length,
+    backend:  flow.filter(s => s.type === 'backend'  || s.type === 'route').length,
+    api:      flow.filter(s => s.type === 'api'       || s.type === 'external').length,
   };
 
   return (

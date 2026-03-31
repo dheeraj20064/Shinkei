@@ -13,7 +13,13 @@ function EdgePath({ from, to, label, pos, levels, visible, backward, edgeIndex }
   const fp = pos[from], tp = pos[to];
   if (!fp || !tp) return null;
 
-  const [sx, sy_start, ex, ey_start] = backward
+  // Detect if the "from" node is visually below the "to" node (reverse edge)
+  // This happens when the backend sends edges like { from: route, to: controller }
+  // where the route is placed deeper in the layout than the controller
+  const isReverseEdge = fp.y > tp.y;
+  const flipped = backward ? !isReverseEdge : isReverseEdge;
+
+  const [sx, sy_start, ex, ey_start] = flipped
     ? [PAD + tp.x + NW / 2, PAD + tp.y + NH,  PAD + fp.x + NW / 2, PAD + fp.y]
     : [PAD + fp.x + NW / 2, PAD + fp.y + NH,  PAD + tp.x + NW / 2, PAD + tp.y];
 
@@ -98,7 +104,8 @@ function NodeCard({ node, pos, isRoot, isActive, onClick, level, visible }) {
   const y = PAD + p.y;
   const t = TYPE[node.type] || TYPE.function;
   const shortLabel = node.label.length > 22 ? node.label.slice(0, 21) + '…' : node.label;
-  const shortFile  = node.file.length  > 24 ? '…' + node.file.slice(-23) : node.file;
+  const shortFile  = node.file?.length > 24 ? '…' + node.file.slice(-23) : (node.file || '');
+  const lineNum    = node.startLine ?? node.line ?? null;
   const delay      = level * LEVEL_DELAY;
   const isHighlighted = isRoot || isActive || hovered;
 
@@ -171,7 +178,7 @@ function NodeCard({ node, pos, isRoot, isActive, onClick, level, visible }) {
       <text x={x + 14} y={y + 55} fontSize="10" fontFamily="'JetBrains Mono', monospace"
         fill="#64748b" opacity={isHighlighted ? 0.85 : 0.7}
         style={{ transition: 'opacity 0.2s' }}>
-        {shortFile} :{node.line}
+        {shortFile}{lineNum != null ? ` :${lineNum}` : ''}
       </text>
 
       {/* Active click indicator */}
