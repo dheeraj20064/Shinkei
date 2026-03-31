@@ -281,6 +281,21 @@ function getRoutesForHandler(handlerName) {
     return results;
 }
 
+/**
+ * Return all events that declare `handlerId` as their handler.
+ * Used by graphTraversal to annotate functions with their event entry points.
+ *
+ * @param   {string} handlerId
+ * @returns {{ id, handler, file, event, element }[]}
+ */
+function getEventsForHandler(handlerId) {
+    const results = [];
+    for (const [, data] of index.events) {
+        if (data.handler === handlerId) results.push(data);
+    }
+    return results;
+}
+
 // ─── Exports ──────────────────────────────────────────────────────────────────
 
 module.exports = {
@@ -292,4 +307,5 @@ module.exports = {
     getCalls,
     getUsedBy,
     getRoutesForHandler,
+    getEventsForHandler,
 };

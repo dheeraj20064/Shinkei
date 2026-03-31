@@ -28,7 +28,7 @@ function _cacheKey(label, code) {
 }
 
 // ─── Prompt builder ───────────────────────────────────────────────────────────
-function _buildPrompt(label, code) {
+function _ExplainPrompt(label, code) {
     return `You are a JavaScript code assistant.
 
 Explain the following function in a simple, practical, and code-focused way.
@@ -100,7 +100,10 @@ function _callGemini(prompt) {
 
                     const text = parsed?.candidates?.[0]?.content?.parts?.[0]?.text ?? null;
                     if (!text) {
-                        console.error("[explain_service] no text in candidates:", JSON.stringify(parsed).slice(0, 300));
+                        console.error("[explain_service] no text in candidates");
+                        console.error("[explain_service] full response:", JSON.stringify(parsed).slice(0, 500));
+                    } else {
+                        console.log("[explain_service] extracted text (first 150 chars):", text.slice(0, 150));
                     }
                     resolve(text);
                 } catch (e) {
@@ -122,13 +125,34 @@ function _callGemini(prompt) {
 
 // ─── Response parser ──────────────────────────────────────────────────────────
 function _parseResponse(text) {
-    if (!text) return null;
-    try {
-        const clean = text.replace(/```json|```/g, "").trim();
-        return JSON.parse(clean);
-    } catch {
+    if (!text) {
+        console.error("[_parseResponse] text is null or empty");
         return null;
     }
+    try {
+        const clean = text.replace(/```json|```/g, "").trim();
+        console.log("[_parseResponse] cleaned text (first 200 chars):", clean.slice(0, 200));
+        return JSON.parse(clean);
+    } catch (err) {
+        console.error("[_parseResponse] JSON parse failed:", err.message);
+        console.error("[_parseResponse] raw text (first 300 chars):", text.slice(0, 300));
+        return null;
+    }
+}
+function _AskPrompt(label, code, question) {
+    return `You are a JavaScript code assistant.
+
+Answer the question based on the following function code.
+
+Rules:
+- Answer concisely and directly (1-3 sentences max)
+- Focus only on what the code does, not external assumptions
+- If the question cannot be answered from the code, say so clearly
+- Keep it code-focused and practical
+
+Function: ${label}
+Code: ${code}
+Question: ${question}`;
 }
 
 // ─── Fallback ─────────────────────────────────────────────────────────────────
@@ -160,7 +184,7 @@ async function explainFunction(label, code) {
     console.log("[explain_service] key present:", !!process.env.GEMINI_API_KEY);
 
     try {
-        const prompt  = _buildPrompt(label, code);
+        const prompt  = _ExplainPrompt(label, code);
         const text    = await _callGemini(prompt);
         const parsed  = _parseResponse(text);
         const result  = parsed ?? FALLBACK;
@@ -172,5 +196,35 @@ async function explainFunction(label, code) {
         return FALLBACK;
     }
 }
+async function askGemini(label, code, question) {
+    if (!label) console.warn("[ask_gemini] label is missing");
+    if (!code) console.warn("[ask_gemini] code is missing");
+    if (!question) console.warn("[ask_gemini] question is missing");
+    if (!label || !code || !question) return { answer: "Missing required parameters" };
 
-module.exports = { explainFunction };
+    // Use a different cache key that includes the question to avoid collision with explainFunction
+    const key = `ask::${label}::${code.slice(0, 200)}::${question.slice(0, 100)}`;
+    if (cache.has(key)) {
+        console.log("[ask_gemini] cache hit for:", label);
+        return cache.get(key);
+    }
+
+    console.log("[ask_gemini] calling Gemini 2.5 Flash for:", label);
+    console.log("[ask_gemini] key present:", !!process.env.GEMINI_API_KEY);
+
+    try {
+        const prompt  = _AskPrompt(label, code, question);
+        const text    = await _callGemini(prompt);
+
+        // Return plain text directly, wrapped in answer field
+        const result = { answer: text || "Could not generate an answer" };
+
+        cache.set(key, result);
+        return result;
+    } catch (err) {
+        console.error("[ask_gemini] failed:", err.message);
+        return { answer: "Failed to get answer: " + err.message };
+    }
+}
+
+module.exports = { explainFunction, askGemini };

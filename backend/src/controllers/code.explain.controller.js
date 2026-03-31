@@ -1,4 +1,4 @@
-const { explainFunction } = require("../services/code_explain");
+const { explainFunction,askGemini } = require("../services/code_explain");
 
 /**
  * explain_controller.js
@@ -44,6 +44,46 @@ exports.explainFunction = async (req, res) => {
         return res.status(500).json({
             success: false,
             error:   "Failed to explain function: " + err.message,
+        });
+    }
+};
+
+exports.askGemini = async (req, res) => {
+    try {
+        const { code, label, question } = req.body;
+        if (!code || typeof code !== "string" || code.trim().length === 0) {
+            return res.status(400).json({
+                success: false,
+                error:   "code is required and must be a non-empty string.",
+            });
+        }
+        if (!label || typeof label !== "string") {
+            return res.status(400).json({
+                success: false,
+                error:   "label is required.",
+            });
+        }
+        if (!question || typeof question !== "string") {
+            return res.status(400).json({
+                success: false,
+                error:   "question is required.",
+            });
+        }
+
+        const answer = await askGemini(label.trim(), code.trim(), question.trim());
+
+        return res.json({
+            success:     true,
+            label,
+            question,
+            answer,
+        });
+
+    } catch (err) {
+        console.error("[askGemini] crash:", err.message);
+        return res.status(500).json({
+            success: false,
+            error:   "Failed to ask Gemini: " + err.message,
         });
     }
 };

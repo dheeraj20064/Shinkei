@@ -8,6 +8,7 @@ import GraphView from './components/GraphView';
 function App() {
   const [view, setView] = useState('hero'); // 'hero' | 'workspace' | 'graph'
   const [flow, setFlow] = useState(null);
+  const [trace, setTrace] = useState(null);
   const [loading, setLoading] = useState(false);
   const [graphDirection, setGraphDirection] = useState('forward');
   const [graphSteps, setGraphSteps] = useState(10);
@@ -24,11 +25,13 @@ function App() {
   const handleBackToWorkspace = () => {
     setView('workspace');
     setFlow(null);
+    setTrace(null);
   };
 
   // This function now talks to your actual backend
  const handleAnalyze = async (url, fnText, direction = 'forward', steps = 10) => {
   setFlow(null);
+  setTrace(null);
   setLoading(true);
   setGraphDirection(direction);
   setGraphSteps(steps);
@@ -51,13 +54,16 @@ function App() {
     if (!response.ok || !data.success) {
       console.error('Analysis failed:', data.error);
       setFlow(null); // optionally show an error state
+      setTrace(null);
     } else {
       setFlow(data.flow); // ✅ data.flow matches what GraphView expects
+      setTrace(data.trace);
     }
 
   } catch (err) {
     console.error('Network error:', err);
     setFlow(null);
+    setTrace(null);
   } finally {
     setLoading(false);
     setView('graph');
@@ -86,6 +92,7 @@ function App() {
       <GraphView
         isOpen={view === 'graph'}
         flow={flow}
+        trace={trace}
         loading={loading}
         onBackToWorkspace={handleBackToWorkspace}
         initialDirection={graphDirection}

@@ -62,7 +62,7 @@ function FloatingOrbs() {
   );
 }
 
-export default function GraphView({ isOpen, flow, loading, onBackToWorkspace, initialDirection = 'forward', maxSteps = 10 }) {
+export default function GraphView({ isOpen, flow, trace, loading, onBackToWorkspace, initialDirection = 'forward', maxSteps = 10 }) {
   return (
     <AnimatePresence initial={false}>
       {isOpen && (
@@ -251,7 +251,7 @@ export default function GraphView({ isOpen, flow, loading, onBackToWorkspace, in
                 zIndex: 2,
               }}
             >
-              <StatsBar flow={flow.nodes} />
+              <StatsBar flow={trace} />
             </motion.div>
           )}
 

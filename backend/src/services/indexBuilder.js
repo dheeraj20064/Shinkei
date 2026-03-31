@@ -73,6 +73,12 @@ class IndexBuilder {
         this.routes = new Map();
 
         /**
+         * Event index — "event::element" → event data.
+         * @type {Map<string, { id, handler, file, event, element }>}
+         */
+        this.events = new Map();
+
+        /**
          * Raw parsed data per relative file path.
          * @type {Map<string, object>}
          */
@@ -117,13 +123,15 @@ class IndexBuilder {
             this.files.set(relativePath, data);
             this._indexFunctions(relativePath, data.functions ?? []);
             this._indexRoutes(relativePath, data.routes ?? []);
+            this._indexEvents(relativePath, data.events ?? []);
         }
 
         console.log(
             `[indexBuilder] built` +
             ` | files: ${this.files.size}` +
             ` | functions: ${this.functionsById.size}` +
-            ` | routes: ${this.routes.size}`
+            ` | routes: ${this.routes.size}` +
+            ` | events: ${this.events.size}`
         );
     }
     // ─── Private ──────────────────────────────────────────────────────────────
@@ -132,6 +140,7 @@ class IndexBuilder {
         this.functionsById.clear();
         this.functionsByName.clear();
         this.routes.clear();
+        this.events.clear();
         this.files.clear();
         this._invalidateReverseMap();
     }
@@ -189,6 +198,28 @@ class IndexBuilder {
                 file:    relativePath,
                 method:  (route.method ?? "ANY").toUpperCase(),
                 path:    route.path,
+            });
+        }
+    }
+
+    _indexEvents(relativePath, events) {
+        for (const event of events) {
+            const id = `${event.event}::${event.element}`;
+
+            if (this.events.has(id)) {
+                console.warn(
+                    `[indexBuilder] duplicate event ${id} in ${relativePath}` +
+                    ` (already registered in ${this.events.get(id).file}) — skipped`
+                );
+                continue;
+            }
+
+            this.events.set(id, {
+                id,
+                handler: event.handlerFunctionId,
+                file:    relativePath,
+                event:   event.event,
+                element: event.element,
             });
         }
     }

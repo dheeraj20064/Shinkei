@@ -64,11 +64,17 @@ const STAT_CONFIG = [
   },
 ];
 
+function classifyFile(file) {
+  if (!file) return "backend";
+  if (file.includes("/frontend/") || file.includes("\\frontend\\") || file.includes("client") || file.includes("web")) return "frontend";
+  return "backend";
+}
+
 export default function StatsBar({ flow }) {
   const values = {
     total:    flow.length,
-    frontend: flow.filter(s => s.type === 'frontend' || s.type === 'event').length,
-    backend:  flow.filter(s => s.type === 'backend'  || s.type === 'route').length,
+    frontend: flow.filter(s => s.layer === 'frontend' || s.type === 'event').length,
+    backend:  flow.filter(s => s.layer === 'backend'  || s.type === 'route').length,
     api:      flow.filter(s => s.type === 'api'       || s.type === 'external').length,
   };
 

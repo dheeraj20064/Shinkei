@@ -80,7 +80,19 @@ function traceForward(entryFnInfo, maxDepth = 8) {
         if (depth > maxDepth) return;
         if (callStack.has(fnInfo.id)) return;   // cycle guard — ID-keyed
 
-        const nodeType = classifyFile(fnInfo.file);
+        // Classify node type: route handler > event handler > function
+        let nodeType = "function";
+        const routesForFn = resolver.getRoutesForHandler(fnInfo.name);
+        if (routesForFn.length > 0) {
+            nodeType = "route";
+        } else {
+            const eventsForFn = resolver.getEventsForHandler(fnInfo.id);
+            if (eventsForFn.length > 0) {
+                nodeType = "event";
+            }
+        }
+
+        const layer = classifyFile(fnInfo.file);
         const nodeId   = upsertNode(fnInfo.id, fnInfo.name, fnInfo.file, fnInfo.startLine, fnInfo.endLine, nodeType);
         addEdge(callerNodeId, nodeId);
 
@@ -89,8 +101,8 @@ function traceForward(entryFnInfo, maxDepth = 8) {
             file:      fnInfo.file,
             startLine: fnInfo.startLine,
             endLine:   fnInfo.endLine,
-            type:      "function",
-            layer:     nodeType,
+            type:      nodeType,
+            layer:     layer,
         });
 
         if (fullyProcessed.has(fnInfo.id)) return;
@@ -185,13 +197,25 @@ function traceBackward(entryFnInfo, maxDepth = 4) {
     const { nodes, edges, flow, upsertNode, addEdge, pushFlow } = createGraph();
     const visited = new Set();   // Set<fnId>
 
+    // Classify node type for entry
+    let entryType = "function";
+    const routesForEntry = resolver.getRoutesForHandler(entryFnInfo.name);
+    if (routesForEntry.length > 0) {
+        entryType = "route";
+    } else {
+        const eventsForEntry = resolver.getEventsForHandler(entryFnInfo.id);
+        if (eventsForEntry.length > 0) {
+            entryType = "event";
+        }
+    }
+
     const targetId = upsertNode(
         entryFnInfo.id,
         entryFnInfo.name,
         entryFnInfo.file,
         entryFnInfo.startLine,
         entryFnInfo.endLine,
-        classifyFile(entryFnInfo.file)
+        entryType
     );
 
     const queue = [{ fnInfo: entryFnInfo, nodeId: targetId, depth: 0 }];
@@ -207,13 +231,25 @@ function traceBackward(entryFnInfo, maxDepth = 4) {
         for (const callerInfo of resolver.getUsedBy(current.id)) {
             if (!isRelevantCall(callerInfo.name, null, resolver.knowsFunction)) continue;
 
+            // Classify caller type
+            let callerType = "function";
+            const routesForCaller = resolver.getRoutesForHandler(callerInfo.name);
+            if (routesForCaller.length > 0) {
+                callerType = "route";
+            } else {
+                const eventsForCaller = resolver.getEventsForHandler(callerInfo.id);
+                if (eventsForCaller.length > 0) {
+                    callerType = "event";
+                }
+            }
+
             const callerId = upsertNode(
                 callerInfo.id,
                 callerInfo.name,
                 callerInfo.file,
                 callerInfo.startLine,
                 callerInfo.endLine,
-                classifyFile(callerInfo.file)
+                callerType
             );
 
             addEdge(callerId, currentNodeId);
@@ -223,7 +259,7 @@ function traceBackward(entryFnInfo, maxDepth = 4) {
                 file:      callerInfo.file,
                 startLine: callerInfo.startLine,
                 endLine:   callerInfo.endLine,
-                type:      "function",
+                type:      callerType,
                 layer:     classifyFile(callerInfo.file),
             });
 
